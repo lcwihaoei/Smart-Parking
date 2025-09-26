@@ -27,10 +27,16 @@ jobs:
             printf "\n<!--START_SECTION:status-->\nPlaceholder\n<!--END_SECTION:status-->\n" >> README.md
           fi
 
+      - name: Set timezone to Taipei
+        run: |
+          sudo apt-get install -y tzdata
+          sudo ln -fs /usr/share/zoneinfo/Asia/Taipei /etc/localtime
+          sudo dpkg-reconfigure -f noninteractive tzdata
+
       - name: Generate snippet
         id: gen
         run: |
-          echo "SNIPPET=Last update: $(date -u) | branch: '${GITHUB_REF_NAME}'" >> "$GITHUB_ENV"
+          echo "SNIPPET=Last update: $(date) | branch: '${GITHUB_REF_NAME}'" >> "$GITHUB_ENV"
 
       - name: Replace between markers (Python, safe)
         run: |
