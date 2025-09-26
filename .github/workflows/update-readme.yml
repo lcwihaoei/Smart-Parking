@@ -18,14 +18,7 @@ jobs:
           ref: main
           persist-credentials: true
 
-      - name: Debug env
-        run: |
-          set -x
-          git --version
-          ls -la
-          echo "BRANCH=${GITHUB_REF_NAME}"
-
-      - name: Ensure README exists and markers present
+      - name: Ensure README and markers
         run: |
           if [ ! -f README.md ]; then
             echo "# Smart Parking System" > README.md
@@ -43,16 +36,22 @@ EOF
         id: gen
         run: echo "SNIPPET=Last update: $(date -u) | branch: ${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
 
-      - name: Replace between markers (robust)
+      - name: Replace between markers (Python, safe)
         run: |
-          SNIPPET="${{ steps.gen.outputs.SNIPPET }}"
-          # 用 perl 處理整檔（-0777 讀整個檔；s 修飾符 /s 讓 . 匹配換行）
-          perl -0777 -pe 'BEGIN{$s=q('"'"$SNIPPET"'"')}
-            s/<!--START_SECTION:status-->.*?<!--END_SECTION:status-->/<!--START_SECTION:status-->\n$s\n<!--END_SECTION:status-->/s
-          ' README.md > README.new || { echo "::error::replace failed"; exit 2; }
-          mv README.new README.md
-          echo "----- README preview -----"
-          sed -n '1,80p' README.md
+          python3 - <<'PY'
+          import io,sys,re,os
+          fname="README.md"
+          with io.open(fname,"r",encoding="utf-8") as f:
+              txt=f.read()
+          snippet=os.environ.get("SNIPPET","")
+          pat=re.compile(r"<!--START_SECTION:status-->.*?<!--END_SECTION:status-->", re.S)
+          repl=f"<!--START_SECTION:status-->\n{snippet}\n<!--END_SECTION:status-->"
+          new=pat.sub(repl, txt)
+          with io.open(fname,"w",encoding="utf-8",newline="\n") as f:
+              f.write(new)
+          PY
+        env:
+          SNIPPET: ${{ steps.gen.outputs.SNIPPET }}
 
       - name: Commit if changed
         run: |
