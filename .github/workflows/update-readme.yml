@@ -1,79 +1,41 @@
-name: Update README on any push
+name: Update GitHub Activity
 
 on:
-  push:
-    branches: ["**"]
-  workflow_dispatch:
-
-permissions:
-  contents: write
+  workflow_dispatch: # Allows manual triggering
 
 jobs:
-  update:
+  update-activity:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout main
+      - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          ref: main
-          persist-credentials: true
 
-      - name: Ensure README and markers
+      - name: Ensure README.md exists
         run: |
           if [ ! -f README.md ]; then
             echo "# Smart Parking System" > README.md
-            printf "\n<!--START_SECTION:status-->\nPlaceholder\n<!--END_SECTION:status-->\n" >> README.md
+            echo "" >> README.md
+            echo "<!--START_SECTION:status-->" >> README.md
+            echo "Last update: $(date) | branch: '${{ github.ref_name }}'" >> README.md
+            echo "<!--END_SECTION:status-->" >> README.md
           fi
-
-      - name: Set timezone to Taipei
-        run: |
-          sudo apt-get install -y tzdata
-          sudo ln -fs /usr/share/zoneinfo/Asia/Taipei /etc/localtime
-          sudo dpkg-reconfigure -f noninteractive tzdata
 
       - name: Detect file changes
-        id: detect_changes
         run: |
-          git fetch --all
-          git pull
-          CHANGES=$(git status --porcelain=all)
+          CHANGES=$(git status --porcelain)
           if [ -z "$CHANGES" ]; then
-            CHANGES="No changes detected"
+            echo "No changes detected" >> README.md
           else
-            CHANGES=$(echo "$CHANGES" | awk '{print " - "$1 " "$2}')
+            echo "File changes:" >> README.md
+            echo "$CHANGES" >> README.md
           fi
-          echo "CHANGES=$CHANGES" >> "$GITHUB_ENV"
 
-      - name: Generate snippet with CRUD
-        id: gen
-        run: |
-          SNIPPET="Last update: $(date) | branch: '${GITHUB_REF_NAME}'\n"
-          SNIPPET+="File changes:\n$CHANGES"
-          echo "SNIPPET=$SNIPPET" >> "$GITHUB_ENV"
-
-      - name: Replace between markers (Python, safe)
-        run: |
-            python3 - <<PY
-            import io, os, re
-            fname = "README.md"
-            with io.open(fname, "r", encoding="utf-8") as f:
-                txt = f.read()
-            snippet = os.environ.get("SNIPPET", "")
-            pat = re.compile(r"<!--START_SECTION:status-->.*?<!--END_SECTION:status-->", re.S)
-            if pat.search(txt):
-                new = pat.sub(f"<!--START_SECTION:status-->\n{snippet}\n<!--END_SECTION:status-->", txt)
-            else:
-                new = txt + f"\n<!--START_SECTION:status-->\n{snippet}\n<!--END_SECTION:status-->\n"
-            with io.open(fname, "w", encoding="utf-8", newline="\n") as f:
-                f.write(new)
-            PY
+      - name: Commit and push changes
         env:
-          SNIPPET: ${{ env.SNIPPET }}
-
-      - name: Commit if changed
+          GITHUB_TOKEN: ${{ secrets.REPO_TOKEN }}
         run: |
-          git config user.name  "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
           git add README.md
-          git commit -m "docs: auto-update README [skip ci]" || echo "No changes to commit"
-          git push || echo "Nothing to push"
+          git commit -m "Update README with latest activity"
+          git push
