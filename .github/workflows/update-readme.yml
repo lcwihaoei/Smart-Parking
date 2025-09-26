@@ -33,7 +33,7 @@ jobs:
 
       - name: Replace between markers (Python, safe)
         run: |
-          python3 - <<'PY'
+          python3 - <<PY
           import io,os,re
           fname="README.md"
           with io.open(fname,"r",encoding="utf-8") as f:
