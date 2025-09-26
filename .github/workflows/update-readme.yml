@@ -24,12 +24,7 @@ jobs:
             echo "# Smart Parking System" > README.md
           fi
           if ! grep -q "<!--START_SECTION:status-->" README.md; then
-            cat >> README.md <<'EOF'
-
-<!--START_SECTION:status-->
-Placeholder
-<!--END_SECTION:status-->
-EOF
+            printf "\n<!--START_SECTION:status-->\nPlaceholder\n<!--END_SECTION:status-->\n" >> README.md
           fi
 
       - name: Generate snippet
@@ -39,14 +34,13 @@ EOF
       - name: Replace between markers (Python, safe)
         run: |
           python3 - <<'PY'
-          import io,sys,re,os
+          import io,os,re
           fname="README.md"
           with io.open(fname,"r",encoding="utf-8") as f:
               txt=f.read()
           snippet=os.environ.get("SNIPPET","")
           pat=re.compile(r"<!--START_SECTION:status-->.*?<!--END_SECTION:status-->", re.S)
-          repl=f"<!--START_SECTION:status-->\n{snippet}\n<!--END_SECTION:status-->"
-          new=pat.sub(repl, txt)
+          new=pat.sub(f"<!--START_SECTION:status-->\n{snippet}\n<!--END_SECTION:status-->", txt)
           with io.open(fname,"w",encoding="utf-8",newline="\n") as f:
               f.write(new)
           PY
