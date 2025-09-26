@@ -1,2 +1,2 @@
 This is bbb.txt file content.
-88800
+888000
