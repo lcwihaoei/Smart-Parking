@@ -36,14 +36,18 @@ jobs:
       - name: Detect file changes
         id: detect_changes
         run: |
-          CHANGES=$(git status --porcelain | awk '{print $1 " " $2}')
+          CHANGES=$(git status --porcelain)
+          if [ -z "$CHANGES" ]; then
+            CHANGES="No changes detected"
+          else
+            CHANGES=$(echo "$CHANGES" | awk '{print " - "$1 " "$2}')
+          fi
           echo "CHANGES=$CHANGES" >> "$GITHUB_ENV"
 
       - name: Generate snippet with CRUD
         id: gen
         run: |
           SNIPPET="Last update: $(date) | branch: '${GITHUB_REF_NAME}'\n"
-          CHANGES=$(echo "$CHANGES" | sed 's/^/ - /')
           SNIPPET+="File changes:\n$CHANGES"
           echo "SNIPPET=$SNIPPET" >> "$GITHUB_ENV"
 
