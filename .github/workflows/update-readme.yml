@@ -30,6 +30,11 @@ jobs:
             echo "$CHANGES" >> README.md
           fi
 
+      - name: Generate SNIPPET
+        id: gen_snippet
+        run: |
+          echo "SNIPPET=Last update: $(date) | branch: '${{ github.ref_name }}'" >> $GITHUB_ENV
+
       - name: Replace between markers (Python, safe)
         run: |
             python3 - <<PY
@@ -40,10 +45,10 @@ jobs:
             snippet = os.environ.get("SNIPPET", "Last update: Placeholder")
             pat = re.compile(r"<!--START_SECTION:status-->.*?<!--END_SECTION:status-->", re.S)
             if pat.search(txt):
-                new = pat.sub(f"<!--START_SECTION:status-->\n{snippet}\n<!--END_SECTION:status-->", txt)
+                new = pat.sub(f"<!--START_SECTION:status-->\\n{snippet}\\n<!--END_SECTION:status-->", txt)
             else:
-                new = txt + f"\n<!--START_SECTION:status-->\n{snippet}\n<!--END_SECTION:status-->\n"
-            with io.open(fname, "w", encoding="utf-8", newline="\n") as f:
+                new = txt + f"\\n<!--START_SECTION:status-->\\n{snippet}\\n<!--END_SECTION:status-->"
+            with io.open(fname, "w", encoding="utf-8", newline="\\n") as f:
                 f.write(new)
             PY
         env:
