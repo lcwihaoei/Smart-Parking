@@ -26,9 +26,13 @@ jobs:
           if [ -z "$CHANGES" ]; then
             echo "No changes detected" >> README.md
           else
-            echo "File changes:" >> README.md
+            echo "File changes detected:" >> README.md
             echo "$CHANGES" >> README.md
           fi
+
+      - name: Force add README.md
+        run: |
+          git add README.md
 
       - name: Commit and push changes
         env:
@@ -36,6 +40,5 @@ jobs:
         run: |
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
-          git add README.md
-          git commit -m "Update README with latest activity"
+          git commit -m "Update README with latest activity" || echo "No changes to commit"
           git push
