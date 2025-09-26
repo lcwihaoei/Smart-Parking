@@ -22,8 +22,6 @@ jobs:
         run: |
           if [ ! -f README.md ]; then
             echo "# Smart Parking System" > README.md
-          fi
-          if ! grep -q "<!--START_SECTION:status-->" README.md; then
             printf "\n<!--START_SECTION:status-->\nPlaceholder\n<!--END_SECTION:status-->\n" >> README.md
           fi
 
