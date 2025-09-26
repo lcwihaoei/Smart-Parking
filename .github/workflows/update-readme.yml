@@ -35,14 +35,17 @@ jobs:
       - name: Replace between markers (Python, safe)
         run: |
             python3 - <<PY
-            import io,os,re
-            fname="README.md"
-            with io.open(fname,"r",encoding="utf-8") as f:
-                txt=f.read()
-            snippet=os.environ.get("SNIPPET","")
-            pat=re.compile(r"<!--START_SECTION:status-->.*?<!--END_SECTION:status-->", re.S)
-            new=pat.sub(f"<!--START_SECTION:status-->\n{snippet}\n<!--END_SECTION:status-->", txt)
-            with io.open(fname,"w",encoding="utf-8",newline="\n") as f:
+            import io, os, re
+            fname = "README.md"
+            with io.open(fname, "r", encoding="utf-8") as f:
+                txt = f.read()
+            snippet = os.environ.get("SNIPPET", "")
+            pat = re.compile(r"<!--START_SECTION:status-->.*?<!--END_SECTION:status-->", re.S)
+            if pat.search(txt):
+                new = pat.sub(f"<!--START_SECTION:status-->\n{snippet}\n<!--END_SECTION:status-->", txt)
+            else:
+                new = txt + f"\n<!--START_SECTION:status-->\n{snippet}\n<!--END_SECTION:status-->\n"
+            with io.open(fname, "w", encoding="utf-8", newline="\n") as f:
                 f.write(new)
             PY
         env:
