@@ -1,0 +1,56 @@
+name: Update README on changes
+
+on:
+  push:
+    branches: ["**"] 
+    # 任何分支 push 都會觸發
+    paths:
+      - 'src/**'
+      - 'api/**'
+      - '.github/workflows/**'
+      - '!README.md'        # 變更 README 本身不觸發，避免迴圈
+  pull_request:
+    types: [closed]          # PR 關閉事件
+  workflow_dispatch:         # 手動觸發
+
+permissions:
+  contents: write            # 允許推回變更（GITHUB_TOKEN 即可）
+
+jobs:
+  update-readme:
+    # 只在 PR 是「已合併」時才執行（push 事件不受此限制）
+    if: github.event_name != 'pull_request' || github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Generate README snippet
+        id: gen
+        run: |
+          # 你要寫進 README 的內容（可改成計算版本號、統計檔案數、拉 API 等）
+          echo "SNIPPET=Last update: $(date -u) | commits: $(git rev-list --count HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Update README between markers
+        run: |
+          SNIPPET="${{ steps.gen.outputs.SNIPPET }}"
+          awk -v RS='' -v ORS='' -v s="$SNIPPET" '
+            {
+              gsub(/<!--START_SECTION:status-->.*<!--END_SECTION:status-->/,
+                   "<!--START_SECTION:status-->\n" s "\n<!--END_SECTION:status-->")
+              print
+            }' README.md > README.new
+          mv README.new README.md
+
+      - name: Commit only if changed
+        run: |
+          if git diff --quiet; then
+            echo "No changes."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md
+          git commit -m "chore: auto-update README [skip ci]"
+          git push
