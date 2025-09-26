@@ -1,56 +1,66 @@
-name: Update README on changes
+name: Update README on any push
 
 on:
   push:
-    branches: ["**"] 
-    # 任何分支 push 都會觸發
-    paths:
-      - 'src/**'
-      - 'api/**'
-      - '.github/workflows/**'
-      - '!README.md'        # 變更 README 本身不觸發，避免迴圈
-  pull_request:
-    types: [closed]          # PR 關閉事件
-  workflow_dispatch:         # 手動觸發
+    branches: ["**"]
+  workflow_dispatch:
 
 permissions:
-  contents: write            # 允許推回變更（GITHUB_TOKEN 即可）
+  contents: write
 
 jobs:
-  update-readme:
-    # 只在 PR 是「已合併」時才執行（push 事件不受此限制）
-    if: github.event_name != 'pull_request' || github.event.pull_request.merged == true
+  update:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout
+      - name: Checkout main
         uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: true
 
-      - name: Generate README snippet
-        id: gen
+      - name: Debug env
         run: |
-          # 你要寫進 README 的內容（可改成計算版本號、統計檔案數、拉 API 等）
-          echo "SNIPPET=Last update: $(date -u) | commits: $(git rev-list --count HEAD)" >> $GITHUB_OUTPUT
+          set -x
+          git --version
+          ls -la
+          echo "BRANCH=${GITHUB_REF_NAME}"
 
-      - name: Update README between markers
+      - name: Ensure README exists and markers present
+        run: |
+          if [ ! -f README.md ]; then
+            echo "# Smart Parking System" > README.md
+          fi
+          if ! grep -q "<!--START_SECTION:status-->" README.md; then
+            cat >> README.md <<'EOF'
+
+<!--START_SECTION:status-->
+Placeholder
+<!--END_SECTION:status-->
+EOF
+          fi
+
+      - name: Generate snippet
+        id: gen
+        run: echo "SNIPPET=Last update: $(date -u) | branch: ${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Replace between markers (robust)
         run: |
           SNIPPET="${{ steps.gen.outputs.SNIPPET }}"
-          awk -v RS='' -v ORS='' -v s="$SNIPPET" '
-            {
-              gsub(/<!--START_SECTION:status-->.*<!--END_SECTION:status-->/,
-                   "<!--START_SECTION:status-->\n" s "\n<!--END_SECTION:status-->")
-              print
-            }' README.md > README.new
+          # 用 perl 處理整檔（-0777 讀整個檔；s 修飾符 /s 讓 . 匹配換行）
+          perl -0777 -pe 'BEGIN{$s=q('"'"$SNIPPET"'"')}
+            s/<!--START_SECTION:status-->.*?<!--END_SECTION:status-->/<!--START_SECTION:status-->\n$s\n<!--END_SECTION:status-->/s
+          ' README.md > README.new || { echo "::error::replace failed"; exit 2; }
           mv README.new README.md
+          echo "----- README preview -----"
+          sed -n '1,80p' README.md
 
-      - name: Commit only if changed
+      - name: Commit if changed
         run: |
           if git diff --quiet; then
-            echo "No changes."
-            exit 0
+            echo "No changes"; exit 0
           fi
-          git config user.name "github-actions[bot]"
+          git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add README.md
-          git commit -m "chore: auto-update README [skip ci]"
+          git commit -m "docs: auto-update README [skip ci]"
           git push
