@@ -29,7 +29,7 @@ jobs:
 
       - name: Generate snippet
         id: gen
-        run: echo "SNIPPET=Last update: $(date -u) | branch: ${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+        run: echo "SNIPPET=Last update: $(date -u) | branch: '${GITHUB_REF_NAME}'" >> "$GITHUB_OUTPUT"
 
       - name: Replace between markers (Python, safe)
         run: |
