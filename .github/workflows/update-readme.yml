@@ -36,7 +36,9 @@ jobs:
       - name: Detect file changes
         id: detect_changes
         run: |
-          CHANGES=$(git status --porcelain)
+          git fetch --all
+          git pull
+          CHANGES=$(git status --porcelain=all)
           if [ -z "$CHANGES" ]; then
             CHANGES="No changes detected"
           else
