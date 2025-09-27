@@ -1,5 +1,5 @@
 # Smart Parking System
 
-<!--START_SECTION:status-->
+<!--START_SECTION:activity-->
 Placeholder
-<!--END_SECTION:status-->
+<!--END_SECTION:activity-->
