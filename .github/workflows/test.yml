@@ -1,8 +1,7 @@
 name: Update README
-
 on:
   schedule:
-    - cron: "0 * * * *"  # 每小時執行
+    - cron: "*/30 * * * *"
   workflow_dispatch:
 
 jobs:
@@ -10,8 +9,14 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+
     steps:
       - uses: actions/checkout@v4
-      - uses: lcwihaoei/github-activity-readme@master
+
+      - name: Update README activity
+        uses: lcwihaoei/github-activity-readme@master
         env:
+          # 用你剛建立的 Classic PAT（Secret 名稱要完全相同）
           GITHUB_TOKEN: ${{ secrets.README_TOKEN }}
+          # 若你改用內建 token，則：
+          # GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
