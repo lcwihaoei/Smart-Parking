@@ -1,3 +1,5 @@
+# Smart Parking System
+
 <!--START_SECTION:activity-->
 1. 🚀 Published release [Release v1.0](https://github.com/lcwihaoei/github-activity-readme/releases/tag/1.0) in [lcwihaoei/github-activity-readme](https://github.com/lcwihaoei/github-activity-readme)
 2. 🚀 Published release [github-activity-readme](https://github.com/lcwihaoei/activity-log/releases/tag/1.0) in [lcwihaoei/activity-log](https://github.com/lcwihaoei/activity-log)
