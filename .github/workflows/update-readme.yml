@@ -12,6 +12,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-      - uses: lcwihaoei/activity-log@master
+      - uses: lcwihaoei/github-activity-readme@master
         env:
           GITHUB_TOKEN: ${{ secrets.README_TOKEN }}
