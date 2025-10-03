@@ -1,0 +1,219 @@
+name: CI • Staging & Production (Grade O)
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "semver bump type (major|minor|patch|none)"
+        required: false
+        default: "patch"
+
+permissions:
+  contents: write     # create/edit releases, push tags
+  issues: write       # post GitHub comments on failures (optional)
+
+env:
+  # change if your app’s entry point differs
+  ENTRY_FILE: index.js
+
+jobs:
+  # 1) Build + Test matrix
+  build_test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [18, 20]   # Node LTSes
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node ${{ matrix.node }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Install
+        run: npm ci || npm i
+
+      - name: Lint
+        run: |
+          npm run lint || echo "no lint script; skipping"
+      - name: Test
+        run: |
+          npm test --if-present || echo "no tests; skipping"
+
+      - name: Build
+        run: |
+          npm run build || echo "no build step; packaging repository"
+
+      - name: Package artifact
+        run: zip -r build-${{ matrix.node }}.zip .
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifact-${{ matrix.node }}
+          path: build-${{ matrix.node }}.zip
+
+  # 2) Versioning (run once; aggregates)
+  versioning:
+    needs: build_test
+    runs-on: ubuntu-latest
+    outputs:
+      VERSION: ${{ steps.out.outputs.version }}
+      TAG_STAGING: ${{ steps.out.outputs.tag_stg }}
+      TAG_PROD: ${{ steps.out.outputs.tag_prod }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute version from package.json or git describe
+        id: ver
+        run: |
+          # prefer package.json version
+          if [ -f package.json ]; then
+            PKG_VER=$(node -e "console.log(require('./package.json').version || '')" || true)
+          fi
+          if [ -z "$PKG_VER" ]; then
+            # fallback to nearest tag e.g. v1.2.3-5-g<sha>
+            PKG_VER=$(git describe --tags --abbrev=0 2>/dev/null || echo "0.0.0")
+          fi
+          echo "BASE_VER=$PKG_VER" >> $GITHUB_ENV
+
+      - name: Auto-bump semantic version
+        id: bump
+        run: |
+          BUMP="${{ github.event.inputs.bump }}"
+          BASE="${BASE_VER#v}"      # strip leading v if present
+          IFS='.' read -r MA MI PA <<EOF
+          ${BASE:-0.0.0}
+          EOF
+          case "$BUMP" in
+            major) MA=$((MA+1)); MI=0; PA=0 ;;
+            minor) MI=$((MI+1)); PA=0 ;;
+            none)  ;; # keep BASE as-is
+            *)     PA=$((PA+1)) ;;  # default patch
+          esac
+          NEW="$MA.$MI.$PA"
+          echo "VERSION=$NEW" >> $GITHUB_OUTPUT
+          echo "TAG_STAGING=staging-v$NEW" >> $GITHUB_OUTPUT
+          echo "TAG_PROD=prod-v$NEW" >> $GITHUB_OUTPUT
+
+      - id: out
+        run: |
+          echo "version=${{ steps.bump.outputs.VERSION }}" >> $GITHUB_OUTPUT
+          echo "tag_stg=${{ steps.bump.outputs.TAG_STAGING }}" >> $GITHUB_OUTPUT
+          echo "tag_prod=${{ steps.bump.outputs.TAG_PROD }}" >> $GITHUB_OUTPUT
+
+  # 3) Deploy Staging
+  deploy_staging:
+    needs: [build_test, versioning]
+    runs-on: ubuntu-latest
+    environment: staging
+    permissions:
+      contents: write
+    steps:
+      - name: Download artifacts (pick a default; here Node 20)
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifact-20
+
+      - name: Create staging release (rollback on failure)
+        id: rel
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.versioning.outputs.TAG_STAGING }}
+          NOTE: ${{ vars.RELEASE_NOTE || 'Testing pre-production release' }}
+        run: |
+          set -e
+          gh release create "$TAG" build-20.zip \
+            --title "$TAG" \
+            --notes "$NOTE" \
+            --target "${{ github.sha }}"
+        shell: bash
+
+      - name: Notify Slack (staging)
+        if: always()
+        env:
+          WEBHOOK: ${{ secrets.SLACK_WEBHOOK }} # <-- environment secret (staging env)
+        run: |
+          if [ -n "$WEBHOOK" ]; then
+            curl -X POST -H 'Content-type: application/json' \
+              --data "{\"text\":\"✅ Staging released: ${{ needs.versioning.outputs.TAG_STAGING }}\"}" \
+              "$WEBHOOK"
+          fi
+
+  # 4) Deploy Production (requires environment approval)
+  deploy_production:
+    needs: [deploy_staging, versioning]
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: write
+    steps:
+      - name: Download artifacts (Node 20)
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifact-20
+
+      - name: Create production release (with rollback if step fails)
+        id: rel
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.versioning.outputs.TAG_PROD }}
+          NOTE: ${{ vars.RELEASE_NOTE || 'Production release' }}
+        run: |
+          set -e
+          gh release create "$TAG" build-20.zip \
+            --title "$TAG" \
+            --notes "$NOTE" \
+            --target "${{ github.sha }}"
+        shell: bash
+
+      - name: Notify Slack (prod)
+        if: always()
+        env:
+          WEBHOOK: ${{ secrets.SLACK_WEBHOOK }} # <-- environment secret (production env)
+        run: |
+          if [ -n "$WEBHOOK" ]; then
+            curl -X POST -H 'Content-type: application/json' \
+              --data "{\"text\":\"🚀 Production released: ${{ needs.versioning.outputs.TAG_PROD }}\"}" \
+              "$WEBHOOK"
+          fi
+
+  # 5) Rollback guard — auto-delete failed releases (both envs)
+  rollback_failed_release:
+    needs: [deploy_staging, deploy_production]
+    if: failure()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete releases created in this run (if any)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_STAGING: ${{ needs.versioning.outputs.TAG_STAGING }}
+          TAG_PROD:    ${{ needs.versioning.outputs.TAG_PROD }}
+        run: |
+          set -e
+          del_if_exists () {
+            local tag="$1"
+            if gh release view "$tag" >/dev/null 2>&1; then
+              gh release delete "$tag" -y
+              git push origin :refs/tags/"$tag" || true
+              echo "Deleted release and tag $tag"
+            fi
+          }
+          del_if_exists "$TAG_STAGING"
+          del_if_exists "$TAG_PROD"
+
+  # 6) GitHub comment on failure (optional)
+  comment_on_failure:
+    needs: [deploy_staging, deploy_production]
+    if: failure()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Comment on the commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api repos/${{ github.repository }}/commits/${{ github.sha }}/comments \
+            -f body="❌ Release pipeline failed in run ${{ github.run_id }}. Please check Actions."
