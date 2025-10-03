@@ -1,0 +1,27 @@
+{
+  "name": "smart-parking",
+  "version": "1.0.0",
+  "description": "<!--START_SECTION:activity-->\r 1. 🗣 Commented on [#2](https://github.com/lcwihaoei/Smart-Parking/issues/2#issuecomment-3341708296) in [lcwihaoei/Smart-Parking](https://github.com/lcwihaoei/Smart-Parking)\r 2. 🚀 Published release [Release v1.0](https://github.com/lcwihaoei/github-activity-readme/releases/tag/1.0) in [lcwihaoei/github-activity-readme](https://github.com/lcwihaoei/github-activity-readme)\r 3. 🚀 Published release [github-activity-readme](https://github.com/lcwihaoei/activity-log/releases/tag/1.0) in [lcwihaoei/activity-log](https://github.com/lcwihaoei/activity-log)\r 4. ❗ Opened issue [#4](https://github.com/lcwihaoei/sadi/issues/4) in [lcwihaoei/sadi](https://github.com/lcwihaoei/sadi)\r 5. ❗ Opened issue [#3](https://github.com/lcwihaoei/sadi/issues/3) in [lcwihaoei/sadi](https://github.com/lcwihaoei/sadi)\r <!--END_SECTION:activity-->",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lcwihaoei/Smart-Parking.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/lcwihaoei/Smart-Parking/issues"
+  },
+  "homepage": "https://github.com/lcwihaoei/Smart-Parking#readme",
+  "dependencies": {
+    "express": "^5.1.0"
+  }
+}
