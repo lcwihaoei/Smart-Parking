@@ -65,6 +65,16 @@ jobs:
           fi
           echo "::notice title=Release inputs::TAG=$TAG NOTE=$NOTE"
 
+      - name: Ensure .git exists
+        run: |
+          if [ ! -d ".git" ]; then
+            echo ".git folder not found. Reinitializing git repository."
+            git init
+            git remote add origin https://github.com/lcwihaoei/Smart-Parking.git
+            git fetch --all
+            git reset --hard ${{ github.sha }}
+          fi
+
       - name: Create Dev Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}   # gh CLI 使用的 token 環境變數
