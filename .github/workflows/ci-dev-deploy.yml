@@ -36,20 +36,41 @@ jobs:
           path: build.zip
 
   deploy-dev:
-    needs: build
-    runs-on: ubuntu-latest
-    environment: dev
-    steps:
-      - name: Download artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: build-artifact
+  needs: build
+  runs-on: ubuntu-latest
+  environment: dev
+  permissions:
+    contents: write
+  steps:
+    - name: Download artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: build-artifact
 
-      - name: Create Dev Release
-        env:
-          GH_TOKEN: ${{ secrets.README_TOKEN }}
-          TAG: ${{ vars.BUILD_TAG }}
-          NOTE: ${{ vars.RELEASE_NOTE }}
-        run: |
-          # 由於 gh release create 會自動推 tag（如果 tag 不存在），這樣比較簡單
-          gh release create "$TAG" build.zip --notes "$NOTE"
+    - name: Ensure TAG and NOTE (fallback if not set)
+      run: |
+        # 若 Environment/Repo 沒有設 BUILD_TAG，就自動產生：dev-v<run_number>
+        if [ -z "${{ vars.BUILD_TAG }}" ]; then
+          echo "TAG=dev-v${{ github.run_number }}" >> $GITHUB_ENV
+        else
+          echo "TAG=${{ vars.BUILD_TAG }}" >> $GITHUB_ENV
+        fi
+
+        # 若沒有 RELEASE_NOTE，給預設說明
+        if [ -z "${{ vars.RELEASE_NOTE }}" ]; then
+          echo "NOTE=Dev auto release from ${{ github.sha }}" >> $GITHUB_ENV
+        else
+          echo "NOTE=${{ vars.RELEASE_NOTE }}" >> $GITHUB_ENV
+        fi
+
+    - name: Create Dev Release
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        echo "Creating release tag: $TAG"
+        # --title 可明確命名，--target 指定這次提交
+        gh release create "$TAG" build.zip \
+          --title "$TAG" \
+          --notes "$NOTE" \
+          --target "${{ github.sha }}"
+
