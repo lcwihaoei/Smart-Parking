@@ -75,6 +75,34 @@ jobs:
             git reset --hard ${{ github.sha }}
           fi
 
+      - name: Simulate build failure
+        run: exit 1
+
+      - name: Simulate release failure (staging)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "invalid-tag-name" build-20.zip \
+            --title "Invalid Tag" \
+            --notes "This should fail" \
+            --target "${{ github.sha }}"
+
+      - name: Simulate Slack notification failure (staging)
+        env:
+          WEBHOOK: "https://invalid-webhook-url"
+        run: |
+          curl -X POST -H 'Content-type: application/json' \
+            --data "{\"text\":\"This should fail\"}" \
+            "$WEBHOOK"
+
+      - name: Simulate versioning failure
+        run: exit 1
+
+      - name: Simulate artifact download failure
+        uses: actions/download-artifact@v4
+        with:
+          name: non-existent-artifact
+
       - name: Create Dev Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}   # gh CLI 使用的 token 環境變數
