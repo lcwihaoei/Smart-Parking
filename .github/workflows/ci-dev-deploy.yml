@@ -1,0 +1,55 @@
+name: CI Dev Deployment
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write  # 產生 release / 上傳檔案需要 write 權限
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      artifact-path: ${{ steps.build-artifact.outputs.artifact-path }}
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Build / Test
+        run: |
+          npm install
+          npm run build
+
+      - name: Package artifact
+        id: build-artifact
+        run: |
+          # 這邊假設把整個 build output 裝進 zip
+          zip -r build.zip . 
+          echo "artifact-path=build.zip" >> $GITHUB_OUTPUT
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifact
+          path: build.zip
+
+  deploy-dev:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifact
+
+      - name: Create Dev Release
+        env:
+          GH_TOKEN: ${{ secrets.README_TOKEN }}
+          TAG: ${{ vars.BUILD_TAG }}
+          NOTE: ${{ vars.RELEASE_NOTE }}
+        run: |
+          # 由於 gh release create 會自動推 tag（如果 tag 不存在），這樣比較簡單
+          gh release create "$TAG" build.zip --notes "$NOTE"
