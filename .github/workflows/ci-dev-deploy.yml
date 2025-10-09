@@ -49,7 +49,7 @@ permissions:
   checks: read
 
 concurrency:
-  group: cicd-${{ github.ref }}
+  group: cicd-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
 
 env:
