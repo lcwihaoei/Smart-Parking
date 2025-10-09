@@ -249,8 +249,16 @@ jobs:
         run: |
           echo "url=https://example.com" >> $GITHUB_OUTPUT
 
+      - name: Checkout code for release
+        if: ${{ github.event.inputs.release_version != '' }}
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 需要完整歷史才能建立 tag
+
       - name: (Optional) Create GitHub Release when production succeeds
         if: ${{ github.event.inputs.release_version != '' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="${{ github.event.inputs.release_version }}"
           git tag -f "${VERSION}"
