@@ -275,6 +275,8 @@ jobs:
           set -euo pipefail
           echo "Git status:"
           git status
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
           echo "Checking release $TAG"
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Release $TAG exists; updating…"
@@ -372,6 +374,10 @@ jobs:
           TAG: ${{ steps.prodtag.outputs.TAG }}
         run: |
           set -euo pipefail
+          echo "Git status:"
+          git status
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
           # 先建立/推送 tag（若同名存在會 -f 覆蓋 tag 指向，但 release 名稱仍唯一）
           git tag -f "$TAG"
           git push -f origin "refs/tags/$TAG"
