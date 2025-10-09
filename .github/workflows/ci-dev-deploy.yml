@@ -272,14 +272,26 @@ jobs:
           set -euo pipefail
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # 打包 dist 為 zip 檔案
+          echo "Creating staging-dist.zip from dist/"
+          cd dist
+          zip -r ../staging-dist.zip . || tar czf ../staging-dist.tar.gz .
+          cd ..
+          
           echo "Checking release $TAG"
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Release $TAG exists; updating…"
-            gh release upload "$TAG" dist/** --clobber || true
+            gh release upload "$TAG" staging-dist.zip --clobber 2>/dev/null || \
+            gh release upload "$TAG" staging-dist.tar.gz --clobber || true
             gh release edit "$TAG" --title "$TAG" --notes "Staging release (rerun ${{ github.run_attempt }})"
           else
             echo "Release $TAG not found; creating…"
-            gh release create "$TAG" dist/** --title "$TAG" --notes "Staging release"
+            if [ -f staging-dist.zip ]; then
+              gh release create "$TAG" staging-dist.zip --title "$TAG" --notes "Staging release"
+            else
+              gh release create "$TAG" staging-dist.tar.gz --title "$TAG" --notes "Staging release"
+            fi
           fi
 
       - name: Slack notify (fake)
@@ -367,6 +379,13 @@ jobs:
           set -euo pipefail
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # 打包 dist 為 zip 檔案
+          echo "Creating production-dist.zip from dist/"
+          cd dist
+          zip -r ../production-dist.zip . || tar czf ../production-dist.tar.gz .
+          cd ..
+          
           # 先建立/推送 tag（若同名存在會 -f 覆蓋 tag 指向，但 release 名稱仍唯一）
           git tag -f "$TAG"
           git push -f origin "refs/tags/$TAG"
@@ -377,7 +396,11 @@ jobs:
             exit 1
           fi
 
-          gh release create "$TAG" dist/** --title "$TAG" --notes "Production release"
+          if [ -f production-dist.zip ]; then
+            gh release create "$TAG" production-dist.zip --title "$TAG" --notes "Production release"
+          else
+            gh release create "$TAG" production-dist.tar.gz --title "$TAG" --notes "Production release"
+          fi
 
       - name: Job summary
         if: always()
