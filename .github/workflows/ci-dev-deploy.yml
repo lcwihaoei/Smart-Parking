@@ -136,9 +136,12 @@ jobs:
         run: |
           echo "TEST_ENV=$TEST_ENV"
           set -e
-          if npm run -s | grep -qE '^\s{2}test:unit'; then
+          HAS_UNIT=$(node -e "try{console.log(Boolean(require('./package.json').scripts && require('./package.json').scripts['test:unit']))}catch(e){console.log(false)}")
+          HAS_TEST=$(node -e "try{console.log(Boolean(require('./package.json').scripts && require('./package.json').scripts['test']))}catch(e){console.log(false)}")
+          echo "HAS_UNIT=$HAS_UNIT HAS_TEST=$HAS_TEST"
+          if [ "$HAS_UNIT" = "true" ]; then
             npm run test:unit
-          elif npm run -s | grep -qE '^\s{2}test$'; then
+          elif [ "$HAS_TEST" = "true" ]; then
             npm test
           else
             echo "::error::Neither 'test:unit' nor 'test' script found in package.json"
@@ -193,9 +196,12 @@ jobs:
         run: |
           echo "TEST_ENV=$TEST_ENV"
           set -e
-          if npm run -s | grep -qE '^\s{2}test:integration'; then
+          HAS_INT=$(node -e "try{console.log(Boolean(require('./package.json').scripts && require('./package.json').scripts['test:integration']))}catch(e){console.log(false)}")
+          HAS_TEST=$(node -e "try{console.log(Boolean(require('./package.json').scripts && require('./package.json').scripts['test']))}catch(e){console.log(false)}")
+          echo "HAS_INT=$HAS_INT HAS_TEST=$HAS_TEST"
+          if [ "$HAS_INT" = "true" ]; then
             npm run test:integration
-          elif npm run -s | grep -qE '^\s{2}test$'; then
+          elif [ "$HAS_TEST" = "true" ]; then
             npm test
           else
             echo "::error::Neither 'test:integration' nor 'test' script found in package.json"
