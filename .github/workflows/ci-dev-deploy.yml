@@ -1,67 +1,230 @@
-name: deploy-dev
+name: CI/CD (Build → Tests → Staging → Production)
 
 on:
+  push:
+    branches: [ "main" ]
   workflow_dispatch:
     inputs:
-      simulate_build_fail:
-        description: "Simulate build failure"
-        type: boolean
-        default: false
-      simulate_release_fail:
-        description: "Simulate release failure"
-        type: boolean
-        default: false
-      simulate_slack_fail:
-        description: "Simulate Slack notification failure"
-        type: boolean
-        default: false
-      simulate_artifact_download_fail:
-        description: "Simulate artifact download failure"
-        type: boolean
-        default: false
-      tag:
-        description: "Release tag (optional)"
+      # 手動執行時可覆寫版本或打標
+      release_version:
+        description: "Production release version tag (e.g., v1.2.3). Optional."
         required: false
         default: ""
 
+      # ===== 故障模擬（手動觸發時可勾選）=====
+      simulate_build_fail:
+        description: "Simulate BUILD failure"
+        type: boolean
+        default: false
+      simulate_unit_fail:
+        description: "Simulate UNIT TEST failure"
+        type: boolean
+        default: false
+      simulate_integration_fail:
+        description: "Simulate INTEGRATION TEST failure"
+        type: boolean
+        default: false
+      simulate_staging_release_fail:
+        description: "Simulate STAGING release failure"
+        type: boolean
+        default: false
+      simulate_prod_release_fail:
+        description: "Simulate PRODUCTION release failure"
+        type: boolean
+        default: false
+      simulate_slack_fail:
+        description: "Simulate SLACK notification failure (staging)"
+        type: boolean
+        default: false
+      simulate_artifact_download_fail:
+        description: "Simulate ARTIFACT DOWNLOAD failure (staging/prod)"
+        type: boolean
+        default: false
+
 permissions:
   contents: write
+  deployments: write
   id-token: write
+  actions: read
+  checks: read
+
+concurrency:
+  group: cicd-${{ github.ref }}
+  cancel-in-progress: false
 
 env:
-  ARTIFACT_NAME: dist-artifact
-  FALLBACK_ARTIFACT_NAME: dist-artifact
+  NODE_VERSION: "20"
+  BUILD_ARTIFACT_NAME: "dist-artifact"
+  # 若你使用 monorepo，改成子資料夾；或刪除此預設。
+  WORKDIR: "."
 
 jobs:
-  deploy-dev:
+  # -------------------- Build --------------------
+  build:
+    name: Build
     runs-on: ubuntu-latest
-
+    defaults:
+      run:
+        working-directory: ${{ env.WORKDIR }}
     steps:
-      - name: Set up job
-        run: echo "Starting deploy-dev"
+      - uses: actions/checkout@v4
 
-      # ✅ 下載產物（可選擇讓它失敗）
-      - name: Download artifact (or fail if simulated)
-        id: dl
-        uses: actions/download-artifact@v4
-        if: ${{ inputs.simulate_artifact_download_fail == false }}
+      - name: Use Node ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
         with:
-          name: ${{ env.ARTIFACT_NAME }}
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+          cache-dependency-path: ${{ env.WORKDIR }}/package-lock.json
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Simulate BUILD failure
+        if: ${{ fromJSON(vars.SIM_FAIL_BUILD || 'false') || (github.event_name == 'workflow_dispatch' && fromJSON(inputs.simulate_build_fail || 'false')) }}
+        run: |
+          echo "::warning::Simulating BUILD failure"
+          exit 1
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.BUILD_ARTIFACT_NAME }}
+          path: |
+            ${{ env.WORKDIR }}/dist/**
+            !**/*.map
+
+  # -------------------- Unit Tests --------------------
+  unit_tests:
+    name: Unit Tests
+    needs: [ build ]
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.WORKDIR }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+          cache-dependency-path: ${{ env.WORKDIR }}/package-lock.json
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Show npm scripts (debug)
+        run: npm run
+
+      - name: Run unit tests (with fallback)
+        env:
+          TEST_ENV: test
+        run: |
+          echo "TEST_ENV=$TEST_ENV"
+          set -e
+          if npm run -s | grep -qE '^\s{2}test:unit'; then
+            npm run test:unit
+          elif npm run -s | grep -qE '^\s{2}test$'; then
+            npm test
+          else
+            echo "::error::Neither 'test:unit' nor 'test' script found in package.json"
+            exit 1
+          fi
+
+      - name: Simulate UNIT TEST failure
+        if: ${{ fromJSON(vars.SIM_FAIL_UNIT || 'false') || (github.event_name == 'workflow_dispatch' && fromJSON(inputs.simulate_unit_fail || 'false')) }}
+        run: |
+          echo "::warning::Simulating UNIT TEST failure"
+          exit 1
+
+  # -------------------- Integration Tests --------------------
+  integration_tests:
+    name: Integration Tests
+    needs: [ build ]
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.WORKDIR }}
+    # 如需資料庫服務，取消註解以下 services 範例
+    # services:
+    #   postgres:
+    #     image: postgres:16
+    #     env:
+    #       POSTGRES_USER: ci
+    #       POSTGRES_PASSWORD: ci
+    #       POSTGRES_DB: app_test
+    #     ports: [ "5432:5432" ]
+    #     options: >-
+    #       --health-cmd="pg_isready -U ci -d app_test"
+    #       --health-interval=10s
+    #       --health-timeout=5s
+    #       --health-retries=10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+          cache-dependency-path: ${{ env.WORKDIR }}/package-lock.json
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Run integration tests (with fallback)
+        env:
+          TEST_ENV: integration
+          # DATABASE_URL: postgresql://ci:ci@localhost:5432/app_test
+        run: |
+          echo "TEST_ENV=$TEST_ENV"
+          set -e
+          if npm run -s | grep -qE '^\s{2}test:integration'; then
+            npm run test:integration
+          elif npm run -s | grep -qE '^\s{2}test$'; then
+            npm test
+          else
+            echo "::error::Neither 'test:integration' nor 'test' script found in package.json"
+            exit 1
+          fi
+
+      - name: Simulate INTEGRATION TEST failure
+        if: ${{ fromJSON(vars.SIM_FAIL_INTEGRATION || 'false') || (github.event_name == 'workflow_dispatch' && fromJSON(inputs.simulate_integration_fail || 'false')) }}
+        run: |
+          echo "::warning::Simulating INTEGRATION TEST failure"
+          exit 1
+
+  # -------------------- Deploy Staging --------------------
+  deploy_staging:
+    name: Deploy → Staging
+    needs: [ unit_tests, integration_tests ]
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+      url: ${{ steps.set-url.outputs.url }}
+    env:
+      TEST_ENV: staging
+    steps:
+      - name: Debug simulate flags
+        run: |
+          echo "event = ${{ github.event_name }}"
+          echo "vars.SIM_FAIL_* are repo variables (Settings→Variables)"
+          echo "inputs.simulate_* are dispatch inputs"
+
+      - name: Download artifact (or fail if simulated)
+        if: ${{ !(fromJSON(vars.SIM_FAIL_DL || 'false') || (github.event_name == 'workflow_dispatch' && fromJSON(inputs.simulate_artifact_download_fail || 'false'))) }}
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.BUILD_ARTIFACT_NAME }}
           path: ./dist
 
       - name: Simulate artifact download failure
-        if: ${{ inputs.simulate_artifact_download_fail == true }}
+        if: ${{ fromJSON(vars.SIM_FAIL_DL || 'false') || (github.event_name == 'workflow_dispatch' && fromJSON(inputs.simulate_artifact_download_fail || 'false')) }}
         run: |
-          echo "::warning::Simulating artifact download failure"
+          echo "::warning::Simulating ARTIFACT DOWNLOAD failure"
           exit 1
 
-      - name: Ensure TAG/NOTE (fallbacks)
-        id: tagprep
-        run: |
-          echo "TAG=${{ inputs.tag != '' && inputs.tag || format('dev-{0}', github.run_number) }}" >> $GITHUB_OUTPUT
-          echo "NOTE=Dev release for run ${{ github.run_number }}" >> $GITHUB_OUTPUT
-
-      - name: Ensure .git exists (for gh)
+      - name: Ensure .git exists (for gh CLI)
         run: |
           if [ ! -d .git ]; then
             git init
@@ -70,67 +233,157 @@ jobs:
             git checkout -B ${{ github.ref_name }}
           fi
 
-      # ✅ 模擬「建置失敗」
-      - name: Simulate build failure
-        if: ${{ inputs.simulate_build_fail == true }}
+      - name: Deploy to STAGING (placeholder)
+        env:
+          STAGING_API_KEY: ${{ secrets.STAGING_API_KEY }}
         run: |
-          echo "::warning::Simulating BUILD failure"
+          echo "Deploying to STAGING with TEST_ENV=$TEST_ENV"
+          # ./scripts/deploy-staging.sh ./dist "$STAGING_API_KEY"
+          echo "done" > deployed.txt
+
+      - name: Set environment URL
+        id: set-url
+        run: |
+          echo "url=https://staging.example.com" >> $GITHUB_OUTPUT
+
+      # ---- Staging Release：可重跑覆蓋（idempotent）----
+      - name: Prepare staging tag
+        id: stagtag
+        run: |
+          # e.g., "staging-v{run_number}"
+          TAG="staging-v${{ github.run_number }}"
+          echo "TAG=$TAG" >> $GITHUB_OUTPUT
+
+      - name: Simulate STAGING release failure
+        if: ${{ fromJSON(vars.SIM_FAIL_STAGING_RELEASE || 'false') || (github.event_name == 'workflow_dispatch' && fromJSON(inputs.simulate_staging_release_fail || 'false')) }}
+        run: |
+          echo "::warning::Simulating STAGING RELEASE failure"
           exit 1
 
-      # …你的真實部署/釋出步驟放在這之前/之後皆可 …
-
-      # ✅ 模擬「Release 失敗」
-      - name: Create or Update Dev Release (idempotent)
+      - name: Create/Update STAGING Release (idempotent)
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ steps.tagprep.outputs.TAG }}   # 你前面產生的 tag，例如 dev-v16
+          TAG: ${{ steps.stagtag.outputs.TAG }}
         run: |
           set -euo pipefail
-
-          # 確保本地/遠端 tag 存在（沒有就補上）
+          # 確保 tag 存在
           if ! git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
             git tag -f "$TAG"
             git push -f origin "refs/tags/$TAG"
           fi
-
-          # 如果 Release 已存在 → 覆蓋資產/更新說明；否則 → 新建
+          # 存在→覆蓋資產；不存在→新建
           if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "Release $TAG exists; updating..."
-            # 用 --clobber 覆蓋同名檔案；你可以把 build.zip 換成實際檔名
-            gh release upload "$TAG" build.zip --clobber || true
-            gh release edit "$TAG" --title "$TAG" --notes "Dev release (rerun ${{ github.run_attempt }})"
+            echo "Release $TAG exists; updating…"
+            gh release upload "$TAG" dist/** --clobber || true
+            gh release edit "$TAG" --title "$TAG" --notes "Staging release (rerun ${{ github.run_attempt }})"
           else
-            echo "Release $TAG not found; creating..."
-            gh release create "$TAG" build.zip --title "$TAG" --notes "Dev release"
+            echo "Release $TAG not found; creating…"
+            gh release create "$TAG" dist/** --title "$TAG" --notes "Staging release"
           fi
 
-      - name: Simulate release failure (staging)
-        if: ${{ inputs.simulate_release_fail == true }}
-        run: |
-          echo "::warning::Simulating RELEASE failure"
-          exit 1
-
-      # ✅ 模擬「Slack 通知失敗」
       - name: Slack notify (fake)
-        if: ${{ inputs.simulate_slack_fail == false }}
+        if: ${{ !(fromJSON(vars.SIM_FAIL_SLACK || 'false') || (github.event_name == 'workflow_dispatch' && fromJSON(inputs.simulate_slack_fail || 'false'))) }}
         run: |
           echo "Pretend to send Slack notification…"
 
       - name: Simulate Slack notification failure (staging)
-        if: ${{ inputs.simulate_slack_fail == true }}
+        if: ${{ fromJSON(vars.SIM_FAIL_SLACK || 'false') || (github.event_name == 'workflow_dispatch' && fromJSON(inputs.simulate_slack_fail || 'false')) }}
         run: |
           echo "::warning::Simulating SLACK failure"
           exit 1
 
-      # ✅ Summary
-      - name: Complete job
+  # -------------------- Deploy Production --------------------
+  deploy_production:
+    name: Deploy → Production (requires approval)
+    needs: [ deploy_staging ]
+    runs-on: ubuntu-latest
+    environment:
+      name: production      # 在 repo Settings→Environments 設 Required reviewers
+      url: ${{ steps.set-url.outputs.url }}
+    env:
+      TEST_ENV: prod
+    steps:
+      - name: Download artifact (or fail if simulated)
+        if: ${{ !(fromJSON(vars.SIM_FAIL_DL || 'false') || (github.event_name == 'workflow_dispatch' && fromJSON(inputs.simulate_artifact_download_fail || 'false'))) }}
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.BUILD_ARTIFACT_NAME }}
+          path: ./dist
+
+      - name: Simulate artifact download failure
+        if: ${{ fromJSON(vars.SIM_FAIL_DL || 'false') || (github.event_name == 'workflow_dispatch' && fromJSON(inputs.simulate_artifact_download_fail || 'false')) }}
+        run: |
+          echo "::warning::Simulating ARTIFACT DOWNLOAD failure"
+          exit 1
+
+      - name: Ensure .git exists (for gh CLI)
+        run: |
+          if [ ! -d .git ]; then
+            git init
+            git remote add origin "${{ github.server_url }}/${{ github.repository }}"
+            git fetch --depth=1 origin ${{ github.ref_name }}
+            git checkout -B ${{ github.ref_name }}
+          fi
+
+      - name: Deploy to PRODUCTION (placeholder)
+        env:
+          PROD_API_KEY: ${{ secrets.PROD_API_KEY }}
+        run: |
+          echo "Deploying to PRODUCTION with TEST_ENV=$TEST_ENV"
+          # ./scripts/deploy-prod.sh ./dist "$PROD_API_KEY"
+          echo "done" > deployed.txt
+
+      - name: Set environment URL
+        id: set-url
+        run: |
+          echo "url=https://example.com" >> $GITHUB_OUTPUT
+
+      # ---- Production Release：產生唯一 tag（避免撞名）----
+      - name: Prepare production tag
+        id: prodtag
+        run: |
+          if [ -n "${{ github.event.inputs.release_version }}" ]; then
+            TAG="${{ github.event.inputs.release_version }}"
+          else
+            # 唯一：prod-v{run_number}[.r{run_attempt}]
+            TAG="prod-v${{ github.run_number }}"
+            if [ "${{ github.run_attempt }}" -gt 1 ]; then
+              TAG="${TAG}.r${{ github.run_attempt }}"
+            fi
+          fi
+          echo "TAG=$TAG" >> $GITHUB_OUTPUT
+
+      - name: Simulate PRODUCTION release failure
+        if: ${{ fromJSON(vars.SIM_FAIL_PROD_RELEASE || 'false') || (github.event_name == 'workflow_dispatch' && fromJSON(inputs.simulate_prod_release_fail || 'false')) }}
+        run: |
+          echo "::warning::Simulating PRODUCTION RELEASE failure"
+          exit 1
+
+      - name: Create unique PRODUCTION Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.prodtag.outputs.TAG }}
+        run: |
+          set -euo pipefail
+          # 先建立/推送 tag（若同名存在會 -f 覆蓋 tag 指向，但 release 名稱仍唯一）
+          git tag -f "$TAG"
+          git push -f origin "refs/tags/$TAG"
+
+          # 若 release 已存在就 fail（prod 嚴格唯一）
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "::error::Release $TAG already exists. Choose a new tag (or set 'release_version')."
+            exit 1
+          fi
+
+          gh release create "$TAG" dist/** --title "$TAG" --notes "Production release"
+
+      - name: Job summary
         if: always()
         run: |
           {
-            echo "## deploy-dev summary"
-            echo ""
-            echo "- simulate_build_fail: **${{ inputs.simulate_build_fail }}**"
-            echo "- simulate_release_fail: **${{ inputs.simulate_release_fail }}**"
-            echo "- simulate_slack_fail: **${{ inputs.simulate_slack_fail }}**"
-            echo "- simulate_artifact_download_fail: **${{ inputs.simulate_artifact_download_fail }}**"
+            echo "## CI/CD Summary"
+            echo "- TEST_ENV (staging/prod set in jobs)"
+            echo "- Staging release: idempotent (clobber assets)"
+            echo "- Production release: strictly unique tag"
+            echo "- Run number: ${{ github.run_number }}, attempt: ${{ github.run_attempt }}"
           } >> $GITHUB_STEP_SUMMARY
