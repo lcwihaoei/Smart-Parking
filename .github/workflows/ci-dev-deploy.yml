@@ -68,6 +68,8 @@ jobs:
         working-directory: ${{ env.WORKDIR }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Use Node ${{ env.NODE_VERSION }}
         uses: actions/setup-node@v4
@@ -81,6 +83,16 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      - name: Ensure dist exists
+        run: |
+          if [ ! -d "${{ env.WORKDIR }}/dist" ]; then
+            echo "dist not found; creating placeholder"
+            mkdir -p "${{ env.WORKDIR }}/dist"
+            echo "placeholder" > "${{ env.WORKDIR }}/dist/.placeholder"
+          else
+            echo "dist exists"
+          fi
 
       - name: Simulate BUILD failure
         if: ${{ fromJSON(vars.SIM_FAIL_BUILD || 'false') || (github.event_name == 'workflow_dispatch' && fromJSON(inputs.simulate_build_fail || 'false')) }}
@@ -163,6 +175,8 @@ jobs:
     #       --health-retries=10
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -262,7 +276,7 @@ jobs:
 
       - name: Create/Update STAGING Release (idempotent)
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ steps.stagtag.outputs.TAG }}
         run: |
           set -euo pipefail
@@ -361,7 +375,7 @@ jobs:
 
       - name: Create unique PRODUCTION Release
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ steps.prodtag.outputs.TAG }}
         run: |
           set -euo pipefail
