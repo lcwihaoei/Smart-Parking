@@ -1,0 +1,181 @@
+name: CI/CD (Build → Test → Staging → Prod)
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: "Release version tag (e.g., v1.2.3). Optional."
+        required: false
+        default: ""
+
+permissions:
+  contents: write         # 發佈 release / push tag 需要
+  deployments: write      # 建立 environment deployment 需要
+  id-token: write         # 若雲端部署需要 OIDC
+  actions: read
+  checks: read
+
+concurrency:
+  group: cicd-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: "20"
+  BUILD_ARTIFACT_NAME: "dist-artifact"
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.BUILD_ARTIFACT_NAME }}
+          path: |
+            dist/**
+            !**/*.map
+
+  unit_tests:
+    name: Unit Tests
+    needs: [ build ]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+      - name: Install deps
+        run: npm ci
+      - name: Run unit tests
+        env:
+          TEST_ENV: "test"     # 單元測試可維持 test；僅示範也能參數化
+        run: |
+          echo "TEST_ENV=$TEST_ENV"
+          npm run test:unit -- --ci --reporter=junit
+
+  integration_tests:
+    name: Integration Tests
+    needs: [ build ]
+    runs-on: ubuntu-latest
+    services:
+      # 若有資料庫或相依服務，這裡可加上（以下舉例 PostgreSQL）
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: app_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U ci -d app_test"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+      - name: Install deps
+        run: npm ci
+      - name: Run integration tests
+        env:
+          TEST_ENV: "integration"
+          DATABASE_URL: postgresql://ci:ci@localhost:5432/app_test
+        run: |
+          echo "TEST_ENV=$TEST_ENV"
+          npm run test:integration -- --ci
+
+  deploy_staging:
+    name: Deploy → Staging
+    needs: [ unit_tests, integration_tests ]
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+      url: ${{ steps.set-url.outputs.url }}  # 顯示在 Environments 畫面
+    env:
+      TEST_ENV: "staging"
+    steps:
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.BUILD_ARTIFACT_NAME }}
+          path: ./dist
+
+      - name: Deploy to Staging (placeholder)
+        id: deploy
+        env:
+          # 可在 Environments > staging 設 SECRET，例如 STAGING_API_KEY
+          STAGING_API_KEY: ${{ secrets.STAGING_API_KEY }}
+        run: |
+          echo "Deploying to STAGING with TEST_ENV=$TEST_ENV"
+          # ===== 在此放你的實際部署腳本 =====
+          # 例如：rsync / scp / terraform / kubectl / serverless / flyctl / vercel / cloud run...
+          # ./scripts/deploy-staging.sh ./dist "$STAGING_API_KEY"
+          echo "done" > deployed.txt
+
+      - name: Set environment URL
+        id: set-url
+        run: |
+          # 這裡示範用固定 URL；可改成部署腳本產出的 URL
+          echo "url=https://staging.example.com" >> $GITHUB_OUTPUT
+
+  deploy_production:
+    name: Deploy → Production (Manual Approval via Environment Protection)
+    needs: [ deploy_staging ]
+    runs-on: ubuntu-latest
+    environment:
+      name: production               # ⚠️ 這個 environment 會在 GitHub UI 設「Required reviewers」
+      url: ${{ steps.set-url.outputs.url }}
+    env:
+      TEST_ENV: "prod"
+    steps:
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.BUILD_ARTIFACT_NAME }}
+          path: ./dist
+
+      - name: Deploy to Production (placeholder)
+        id: deploy
+        env:
+          PROD_API_KEY: ${{ secrets.PROD_API_KEY }}
+        run: |
+          echo "Deploying to PRODUCTION with TEST_ENV=$TEST_ENV"
+          # ===== 在此放你的實際部署腳本 =====
+          # ./scripts/deploy-prod.sh ./dist "$PROD_API_KEY"
+          echo "done" > deployed.txt
+
+      - name: Set environment URL
+        id: set-url
+        run: |
+          echo "url=https://example.com" >> $GITHUB_OUTPUT
+
+      - name: (Optional) Create GitHub Release when production succeeds
+        if: ${{ github.event.inputs.release_version != '' }}
+        run: |
+          VERSION="${{ github.event.inputs.release_version }}"
+          git tag -f "${VERSION}"
+          git push -f origin "refs/tags/${VERSION}"
+          gh release create "${VERSION}" --title "${VERSION}" --notes "Production release ${VERSION}"
