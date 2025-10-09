@@ -204,6 +204,12 @@ jobs:
     env:
       TEST_ENV: staging
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Find artifact to download (staging)
         id: find-artifact-staging
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -237,15 +243,6 @@ jobs:
           name: ${{ steps.find-artifact-staging.outputs.SELECTED }}
           path: ./dist
 
-      - name: Ensure .git exists (for gh CLI)
-        run: |
-          if [ ! -d .git ]; then
-            git init
-            git remote add origin "${{ github.server_url }}/${{ github.repository }}"
-            git fetch --depth=1 origin ${{ github.ref_name }}
-            git checkout -B ${{ github.ref_name }}
-          fi
-
       - name: Deploy to STAGING (placeholder)
         env:
           STAGING_API_KEY: ${{ secrets.STAGING_API_KEY }}
@@ -273,10 +270,6 @@ jobs:
           TAG: ${{ steps.stagtag.outputs.TAG }}
         run: |
           set -euo pipefail
-          echo "PWD: $(pwd)"
-          ls -la .git || echo "No .git found"
-          echo "Git status:"
-          git status
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           echo "Checking release $TAG"
@@ -304,6 +297,11 @@ jobs:
     env:
       TEST_ENV: prod
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Find artifact to download (production)
         id: find-artifact-prod
         env:
@@ -332,15 +330,6 @@ jobs:
         with:
           name: ${{ steps.find-artifact-prod.outputs.SELECTED }}
           path: ./dist
-
-      - name: Ensure .git exists (for gh CLI)
-        run: |
-          if [ ! -d .git ]; then
-            git init
-            git remote add origin "${{ github.server_url }}/${{ github.repository }}"
-            git fetch --depth=1 origin ${{ github.ref_name }}
-            git checkout -B ${{ github.ref_name }}
-          fi
 
       - name: Deploy to PRODUCTION (placeholder)
         env:
@@ -376,10 +365,6 @@ jobs:
           TAG: ${{ steps.prodtag.outputs.TAG }}
         run: |
           set -euo pipefail
-          echo "PWD: $(pwd)"
-          ls -la .git || echo "No .git found"
-          echo "Git status:"
-          git status
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           # 先建立/推送 tag（若同名存在會 -f 覆蓋 tag 指向，但 release 名稱仍唯一）
