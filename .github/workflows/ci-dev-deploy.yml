@@ -240,13 +240,6 @@ jobs:
           echo "vars.SIM_FAIL_* are repo variables (Settings→Variables)"
           echo "inputs.simulate_* are dispatch inputs"
 
-      - name: Download artifact (or fail if simulated)
-        if: ${{ !(github.event_name == 'workflow_dispatch' && fromJSON(inputs.simulate_artifact_download_fail || 'false')) }}
-        uses: actions/download-artifact@v4
-        with:
-          name: ${{ env.BUILD_ARTIFACT_NAME }}
-          path: ./dist
-
       - name: Check artifact exists (staging)
         if: ${{ !(github.event_name == 'workflow_dispatch' && fromJSON(inputs.simulate_artifact_download_fail || 'false')) }}
         env:
@@ -256,8 +249,16 @@ jobs:
           echo "Checking artifact '$ART_NAME' for run $GITHUB_RUN_ID"
           curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \
             "https://api.github.com/repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts" \
-            | grep -q "\"name\": \"$ART_NAME\"" || { echo "::error::Artifact '$ART_NAME' not found in this run"; exit 1; }
+            | tee artifacts_run_list.json \
+            | grep -q "\"name\": \"$ART_NAME\"" || { echo "::error::Artifact '$ART_NAME' not found in this run"; echo "--- artifacts_run_list.json ---"; cat artifacts_run_list.json; exit 1; }
         shell: bash
+
+      - name: Download artifact (or fail if simulated)
+        if: ${{ !(github.event_name == 'workflow_dispatch' && fromJSON(inputs.simulate_artifact_download_fail || 'false')) }}
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.BUILD_ARTIFACT_NAME }}
+          path: ./dist
 
       - name: Simulate artifact download failure
         if: ${{ github.event_name == 'workflow_dispatch' && fromJSON(inputs.simulate_artifact_download_fail || 'false') }}
@@ -344,13 +345,6 @@ jobs:
     env:
       TEST_ENV: prod
     steps:
-      - name: Download artifact (or fail if simulated)
-        if: ${{ !(github.event_name == 'workflow_dispatch' && fromJSON(inputs.simulate_artifact_download_fail || 'false')) }}
-        uses: actions/download-artifact@v4
-        with:
-          name: ${{ env.BUILD_ARTIFACT_NAME }}
-          path: ./dist
-
       - name: Check artifact exists (production)
         if: ${{ !(github.event_name == 'workflow_dispatch' && fromJSON(inputs.simulate_artifact_download_fail || 'false')) }}
         env:
@@ -360,8 +354,16 @@ jobs:
           echo "Checking artifact '$ART_NAME' for run $GITHUB_RUN_ID"
           curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \
             "https://api.github.com/repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts" \
-            | grep -q "\"name\": \"$ART_NAME\"" || { echo "::error::Artifact '$ART_NAME' not found in this run"; exit 1; }
+            | tee artifacts_run_list.json \
+            | grep -q "\"name\": \"$ART_NAME\"" || { echo "::error::Artifact '$ART_NAME' not found in this run"; echo "--- artifacts_run_list.json ---"; cat artifacts_run_list.json; exit 1; }
         shell: bash
+
+      - name: Download artifact (or fail if simulated)
+        if: ${{ !(github.event_name == 'workflow_dispatch' && fromJSON(inputs.simulate_artifact_download_fail || 'false')) }}
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.BUILD_ARTIFACT_NAME }}
+          path: ./dist
 
       - name: Simulate artifact download failure
         if: ${{ github.event_name == 'workflow_dispatch' && fromJSON(inputs.simulate_artifact_download_fail || 'false') }}
