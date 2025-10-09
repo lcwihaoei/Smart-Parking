@@ -273,6 +273,8 @@ jobs:
           TAG: ${{ steps.stagtag.outputs.TAG }}
         run: |
           set -euo pipefail
+          echo "PWD: $(pwd)"
+          ls -la .git || echo "No .git found"
           echo "Git status:"
           git status
           git config --global user.name "github-actions[bot]"
@@ -374,6 +376,8 @@ jobs:
           TAG: ${{ steps.prodtag.outputs.TAG }}
         run: |
           set -euo pipefail
+          echo "PWD: $(pwd)"
+          ls -la .git || echo "No .git found"
           echo "Git status:"
           git status
           git config --global user.name "github-actions[bot]"
