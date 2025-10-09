@@ -1,125 +1,122 @@
-name: CI Dev Deployment
+name: deploy-dev
 
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
     inputs:
-      simulate:
-        description: "Run simulate failure steps"
+      simulate_build_fail:
+        description: "Simulate build failure"
+        type: boolean
+        default: false
+      simulate_release_fail:
+        description: "Simulate release failure"
+        type: boolean
+        default: false
+      simulate_slack_fail:
+        description: "Simulate Slack notification failure"
+        type: boolean
+        default: false
+      simulate_artifact_download_fail:
+        description: "Simulate artifact download failure"
+        type: boolean
+        default: false
+      tag:
+        description: "Release tag (optional)"
         required: false
-        default: 'false'
+        default: ""
 
 permissions:
-  contents: write  # 產生 release / 上傳檔案需要 write 權限
+  contents: write
+  id-token: write
+
+env:
+  ARTIFACT_NAME: dist-artifact
+  FALLBACK_ARTIFACT_NAME: dist-artifact
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    outputs:
-      artifact-path: ${{ steps.build-artifact.outputs.artifact-path }}
-    steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Build / Test
-        run: |
-          npm install
-          npm run build
-
-      - name: Package artifact
-        id: build-artifact
-        run: |
-          # 這邊假設把整個 build output 裝進 zip
-          zip -r build.zip . 
-          echo "artifact-path=build.zip" >> $GITHUB_OUTPUT
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-artifact
-          path: build.zip
-
   deploy-dev:
-    needs: build
     runs-on: ubuntu-latest
-    environment: dev
-    permissions:
-      contents: write
+
     steps:
-      - name: Download artifact
+      - name: Set up job
+        run: echo "Starting deploy-dev"
+
+      # ✅ 下載產物（可選擇讓它失敗）
+      - name: Download artifact (or fail if simulated)
+        id: dl
         uses: actions/download-artifact@v4
+        if: ${{ inputs.simulate_artifact_download_fail == false }}
         with:
-          name: build-artifact
-
-      - name: Ensure TAG/NOTE (fallbacks)
-        run: |
-          # 若 Environment/Repo 沒設 BUILD_TAG，改用 dev-v{run_number}
-          if [ -z "${{ vars.BUILD_TAG }}" ]; then
-            echo "TAG=dev-v${{ github.run_number }}" >> $GITHUB_ENV
-          else
-            echo "TAG=${{ vars.BUILD_TAG }}" >> $GITHUB_ENV
-          fi
-          # RELEASE_NOTE 沒設就給預設
-          if [ -z "${{ vars.RELEASE_NOTE }}" ]; then
-            echo "NOTE=Dev auto release from ${{ github.sha }}" >> $GITHUB_ENV
-          else
-            echo "NOTE=${{ vars.RELEASE_NOTE }}" >> $GITHUB_ENV
-          fi
-          echo "::notice title=Release inputs::TAG=$TAG NOTE=$NOTE"
-
-      - name: Ensure .git exists
-        run: |
-          if [ ! -d ".git" ]; then
-            echo ".git folder not found. Reinitializing git repository."
-            git init
-            git remote add origin https://github.com/lcwihaoei/Smart-Parking.git
-            git fetch --all
-            git reset --hard ${{ github.sha }}
-          fi
-
-      - name: Simulate build failure
-        if: ${{ github.event.inputs.simulate == 'true' }}
-        run: exit 1
-
-      - name: Simulate release failure (staging)
-        if: ${{ github.event.inputs.simulate == 'true' }}
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release create "invalid-tag-name" build-20.zip \
-            --title "Invalid Tag" \
-            --notes "This should fail" \
-            --target "${{ github.sha }}"
-
-      - name: Simulate Slack notification failure (staging)
-        if: ${{ github.event.inputs.simulate == 'true' }}
-        env:
-          WEBHOOK: "https://invalid-webhook-url"
-        run: |
-          curl -X POST -H 'Content-type: application/json' \
-            --data "{\"text\":\"This should fail\"}" \
-            "$WEBHOOK"
-
-      - name: Simulate versioning failure
-        if: ${{ github.event.inputs.simulate == 'true' }}
-        run: exit 1
+          name: ${{ env.ARTIFACT_NAME }}
+          path: ./dist
 
       - name: Simulate artifact download failure
-        if: ${{ github.event.inputs.simulate == 'true' }}
-        uses: actions/download-artifact@v4
-        with:
-          name: non-existent-artifact
-
-      - name: Create Dev Release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}   # gh CLI 使用的 token 環境變數
+        if: ${{ inputs.simulate_artifact_download_fail == true }}
         run: |
-          gh release create "$TAG" build.zip \
-            --title "$TAG" \
-            --notes "$NOTE" \
-            --target "${{ github.sha }}"
+          echo "::warning::Simulating artifact download failure"
+          exit 1
 
+      - name: Ensure TAG/NOTE (fallbacks)
+        id: tagprep
+        run: |
+          echo "TAG=${{ inputs.tag != '' && inputs.tag || format('dev-{0}', github.run_number) }}" >> $GITHUB_OUTPUT
+          echo "NOTE=Dev release for run ${{ github.run_number }}" >> $GITHUB_OUTPUT
+
+      - name: Ensure .git exists (for gh)
+        run: |
+          if [ ! -d .git ]; then
+            git init
+            git remote add origin "${{ github.server_url }}/${{ github.repository }}"
+            git fetch --depth=1 origin ${{ github.ref_name }}
+            git checkout -B ${{ github.ref_name }}
+          fi
+
+      # ✅ 模擬「建置失敗」
+      - name: Simulate build failure
+        if: ${{ inputs.simulate_build_fail == true }}
+        run: |
+          echo "::warning::Simulating BUILD failure"
+          exit 1
+
+      # …你的真實部署/釋出步驟放在這之前/之後皆可 …
+
+      # ✅ 模擬「Release 失敗」
+      - name: Create Dev Release
+        id: release
+        if: ${{ inputs.simulate_release_fail == false }}
+        run: |
+          TAG="${{ steps.tagprep.outputs.TAG }}"
+          echo "Creating release ${TAG}"
+          git tag -f "${TAG}"
+          git push -f origin "refs/tags/${TAG}"
+          gh release create "${TAG}" --title "${TAG}" --notes "${{ steps.tagprep.outputs.NOTE }}" || exit 1
+
+      - name: Simulate release failure (staging)
+        if: ${{ inputs.simulate_release_fail == true }}
+        run: |
+          echo "::warning::Simulating RELEASE failure"
+          exit 1
+
+      # ✅ 模擬「Slack 通知失敗」
+      - name: Slack notify (fake)
+        if: ${{ inputs.simulate_slack_fail == false }}
+        run: |
+          echo "Pretend to send Slack notification…"
+
+      - name: Simulate Slack notification failure (staging)
+        if: ${{ inputs.simulate_slack_fail == true }}
+        run: |
+          echo "::warning::Simulating SLACK failure"
+          exit 1
+
+      # ✅ Summary
+      - name: Complete job
+        if: always()
+        run: |
+          {
+            echo "## deploy-dev summary"
+            echo ""
+            echo "- simulate_build_fail: **${{ inputs.simulate_build_fail }}**"
+            echo "- simulate_release_fail: **${{ inputs.simulate_release_fail }}**"
+            echo "- simulate_slack_fail: **${{ inputs.simulate_slack_fail }}**"
+            echo "- simulate_artifact_download_fail: **${{ inputs.simulate_artifact_download_fail }}**"
+          } >> $GITHUB_STEP_SUMMARY
