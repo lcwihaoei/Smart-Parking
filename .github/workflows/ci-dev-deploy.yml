@@ -273,12 +273,9 @@ jobs:
           TAG: ${{ steps.stagtag.outputs.TAG }}
         run: |
           set -euo pipefail
-          # 確保 tag 存在
-          if ! git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
-            git tag -f "$TAG"
-            git push -f origin "refs/tags/$TAG"
-          fi
-          # 存在→覆蓋資產；不存在→新建
+          echo "Git status:"
+          git status
+          echo "Checking release $TAG"
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Release $TAG exists; updating…"
             gh release upload "$TAG" dist/** --clobber || true
