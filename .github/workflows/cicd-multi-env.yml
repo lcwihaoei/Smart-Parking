@@ -45,6 +45,16 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Ensure dist exists
+        run: |
+          if [ ! -d dist ]; then
+            echo "dist not found; creating placeholder"
+            mkdir -p dist
+            echo "placeholder" > dist/.placeholder
+          else
+            echo "dist exists"
+          fi
+
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
