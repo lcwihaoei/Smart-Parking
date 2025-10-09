@@ -261,6 +261,25 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="${{ github.event.inputs.release_version }}"
+          
+          # 打包 dist 檔案
+          echo "Creating release package from dist/"
+          if [ -d dist ] && [ "$(ls -A dist)" ]; then
+            cd dist
+            zip -r ../release-${VERSION}.zip . || tar czf ../release-${VERSION}.tar.gz .
+            cd ..
+          fi
+          
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git tag -f "${VERSION}"
           git push -f origin "refs/tags/${VERSION}"
-          gh release create "${VERSION}" --title "${VERSION}" --notes "Production release ${VERSION}"
+          
+          # 建立 release，如果有打包檔案就附加
+          if [ -f "release-${VERSION}.zip" ]; then
+            gh release create "${VERSION}" "release-${VERSION}.zip" --title "${VERSION}" --notes "Production release ${VERSION}"
+          elif [ -f "release-${VERSION}.tar.gz" ]; then
+            gh release create "${VERSION}" "release-${VERSION}.tar.gz" --title "${VERSION}" --notes "Production release ${VERSION}"
+          else
+            gh release create "${VERSION}" --title "${VERSION}" --notes "Production release ${VERSION}"
+          fi
