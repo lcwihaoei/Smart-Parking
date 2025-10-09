@@ -66,10 +66,16 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "$TAG" build.zip \
-            --title "$TAG" \
-            --notes "$NOTE" \
-            --target "${{ github.sha }}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG exists — updating"
+            gh release upload "$TAG" build.zip --clobber || true
+            gh release edit "$TAG" --title "$TAG" --notes "$NOTE" || true
+          else
+            gh release create "$TAG" build.zip \
+              --title "$TAG" \
+              --notes "$NOTE" \
+              --target "${{ github.sha }}"
+          fi
 
   # 3) DEPLOY PRODUCTION (runs only after staging succeeds)
   deploy-production:
@@ -103,7 +109,13 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "$TAG" build.zip \
-            --title "$TAG" \
-            --notes "$NOTE" \
-            --target "${{ github.sha }}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG exists — updating"
+            gh release upload "$TAG" build.zip --clobber || true
+            gh release edit "$TAG" --title "$TAG" --notes "$NOTE" || true
+          else
+            gh release create "$TAG" build.zip \
+              --title "$TAG" \
+              --notes "$NOTE" \
+              --target "${{ github.sha }}"
+          fi
