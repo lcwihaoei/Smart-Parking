@@ -4,6 +4,12 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
+    inputs:
+      simulate:
+        description: "Run simulate failure steps"
+        required: false
+        default: 'false'
 
 permissions:
   contents: write  # 產生 release / 上傳檔案需要 write 權限
@@ -76,9 +82,11 @@ jobs:
           fi
 
       - name: Simulate build failure
+        if: ${{ github.event.inputs.simulate == 'true' }}
         run: exit 1
 
       - name: Simulate release failure (staging)
+        if: ${{ github.event.inputs.simulate == 'true' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -88,6 +96,7 @@ jobs:
             --target "${{ github.sha }}"
 
       - name: Simulate Slack notification failure (staging)
+        if: ${{ github.event.inputs.simulate == 'true' }}
         env:
           WEBHOOK: "https://invalid-webhook-url"
         run: |
@@ -96,9 +105,11 @@ jobs:
             "$WEBHOOK"
 
       - name: Simulate versioning failure
+        if: ${{ github.event.inputs.simulate == 'true' }}
         run: exit 1
 
       - name: Simulate artifact download failure
+        if: ${{ github.event.inputs.simulate == 'true' }}
         uses: actions/download-artifact@v4
         with:
           name: non-existent-artifact
