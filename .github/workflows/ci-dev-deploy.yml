@@ -94,6 +94,14 @@ jobs:
             echo "dist exists"
           fi
 
+      - name: Show dist contents (debug)
+        run: |
+          echo "PWD=$(pwd)"
+          echo "Listing ${{ env.WORKDIR }}/dist"
+          ls -la "${{ env.WORKDIR }}/dist" || true
+          echo "Find files in dist:" 
+          find "${{ env.WORKDIR }}/dist" -type f -maxdepth 5 -print || true
+
       - name: Simulate BUILD failure
         if: ${{ github.event_name == 'workflow_dispatch' && fromJSON(inputs.simulate_build_fail || 'false') }}
         run: |
