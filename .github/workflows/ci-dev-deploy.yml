@@ -264,6 +264,11 @@ jobs:
             echo "SELECTED=$ART_NAME" >> $GITHUB_OUTPUT
           elif echo "$resp" | grep -q "\"name\": \"$ALT_NAME\""; then
             echo "SELECTED=$ALT_NAME" >> $GITHUB_OUTPUT
+          elif echo "$resp" | grep -qi '"name"[[:space:]]*:[[:space:]]*".*build' ; then
+            # pick the first artifact name that contains 'build'
+            SELECTED_NAME=$(echo "$resp" | grep -oP '"name"\s*:\s*"\K[^"]*build[^"]*' | head -n1)
+            echo "Found build-like artifact: $SELECTED_NAME"
+            echo "SELECTED=$SELECTED_NAME" >> $GITHUB_OUTPUT
           else
             echo "::error::Neither artifact ($ART_NAME nor $ALT_NAME) found in run $GITHUB_RUN_ID"
             echo "--- artifacts_run_list.json ---"
