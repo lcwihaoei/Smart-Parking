@@ -81,29 +81,28 @@ jobs:
 
       # ✅ 模擬「Release 失敗」
       - name: Create or Update Dev Release (idempotent)
-  env:
-    GH_TOKEN: ${{ github.token }}                # 讓 gh CLI 取得授權
-    TAG: ${{ steps.tagprep.outputs.TAG }}        # 你的前一步產生的 TAG
-  run: |
-    set -euo pipefail
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.tagprep.outputs.TAG }}   # 你前面產生的 tag，例如 dev-v16
+        run: |
+          set -euo pipefail
 
-    # 確保本地/遠端 tag 存在（若已存在則跳過）
-    if ! git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
-      git tag -f "$TAG"
-      git push -f origin "refs/tags/$TAG"
-    fi
+          # 確保本地/遠端 tag 存在（沒有就補上）
+          if ! git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            git tag -f "$TAG"
+            git push -f origin "refs/tags/$TAG"
+          fi
 
-    # 若 Release 已存在 → 更新；否則 → 建立
-    if gh release view "$TAG" >/dev/null 2>&1; then
-      echo "Release $TAG exists; updating assets..."
-      # 例：上傳/覆蓋產物
-      gh release upload "$TAG" build.zip --clobber
-      # 也可同步更新標題/說明（可選）
-      gh release edit "$TAG" --title "$TAG" --notes "Dev release (rerun ${{ github.run_attempt }})"
-    else
-      echo "Release $TAG not found; creating..."
-      gh release create "$TAG" build.zip --title "$TAG" --notes "Dev release"
-    fi
+          # 如果 Release 已存在 → 覆蓋資產/更新說明；否則 → 新建
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG exists; updating..."
+            # 用 --clobber 覆蓋同名檔案；你可以把 build.zip 換成實際檔名
+            gh release upload "$TAG" build.zip --clobber || true
+            gh release edit "$TAG" --title "$TAG" --notes "Dev release (rerun ${{ github.run_attempt }})"
+          else
+            echo "Release $TAG not found; creating..."
+            gh release create "$TAG" build.zip --title "$TAG" --notes "Dev release"
+          fi
 
       - name: Simulate release failure (staging)
         if: ${{ inputs.simulate_release_fail == true }}
