@@ -80,15 +80,30 @@ jobs:
       # …你的真實部署/釋出步驟放在這之前/之後皆可 …
 
       # ✅ 模擬「Release 失敗」
-      - name: Create Dev Release
-        id: release
-        if: ${{ inputs.simulate_release_fail == false }}
-        run: |
-          TAG="${{ steps.tagprep.outputs.TAG }}"
-          echo "Creating release ${TAG}"
-          git tag -f "${TAG}"
-          git push -f origin "refs/tags/${TAG}"
-          gh release create "${TAG}" --title "${TAG}" --notes "${{ steps.tagprep.outputs.NOTE }}" || exit 1
+      - name: Create or Update Dev Release (idempotent)
+  env:
+    GH_TOKEN: ${{ github.token }}                # 讓 gh CLI 取得授權
+    TAG: ${{ steps.tagprep.outputs.TAG }}        # 你的前一步產生的 TAG
+  run: |
+    set -euo pipefail
+
+    # 確保本地/遠端 tag 存在（若已存在則跳過）
+    if ! git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+      git tag -f "$TAG"
+      git push -f origin "refs/tags/$TAG"
+    fi
+
+    # 若 Release 已存在 → 更新；否則 → 建立
+    if gh release view "$TAG" >/dev/null 2>&1; then
+      echo "Release $TAG exists; updating assets..."
+      # 例：上傳/覆蓋產物
+      gh release upload "$TAG" build.zip --clobber
+      # 也可同步更新標題/說明（可選）
+      gh release edit "$TAG" --title "$TAG" --notes "Dev release (rerun ${{ github.run_attempt }})"
+    else
+      echo "Release $TAG not found; creating..."
+      gh release create "$TAG" build.zip --title "$TAG" --notes "Dev release"
+    fi
 
       - name: Simulate release failure (staging)
         if: ${{ inputs.simulate_release_fail == true }}
