@@ -95,7 +95,7 @@ jobs:
           fi
 
       - name: Simulate BUILD failure
-        if: ${{ fromJSON(vars.SIM_FAIL_BUILD || 'false') || (github.event_name == 'workflow_dispatch' && fromJSON(inputs.simulate_build_fail || 'false')) }}
+        if: ${{ github.event_name == 'workflow_dispatch' && fromJSON(inputs.simulate_build_fail || 'false') }}
         run: |
           echo "::warning::Simulating BUILD failure"
           exit 1
@@ -149,7 +149,7 @@ jobs:
           fi
 
       - name: Simulate UNIT TEST failure
-        if: ${{ fromJSON(vars.SIM_FAIL_UNIT || 'false') || (github.event_name == 'workflow_dispatch' && fromJSON(inputs.simulate_unit_fail || 'false')) }}
+        if: ${{ github.event_name == 'workflow_dispatch' && fromJSON(inputs.simulate_unit_fail || 'false') }}
         run: |
           echo "::warning::Simulating UNIT TEST failure"
           exit 1
@@ -209,7 +209,7 @@ jobs:
           fi
 
       - name: Simulate INTEGRATION TEST failure
-        if: ${{ fromJSON(vars.SIM_FAIL_INTEGRATION || 'false') || (github.event_name == 'workflow_dispatch' && fromJSON(inputs.simulate_integration_fail || 'false')) }}
+        if: ${{ github.event_name == 'workflow_dispatch' && fromJSON(inputs.simulate_integration_fail || 'false') }}
         run: |
           echo "::warning::Simulating INTEGRATION TEST failure"
           exit 1
@@ -232,14 +232,14 @@ jobs:
           echo "inputs.simulate_* are dispatch inputs"
 
       - name: Download artifact (or fail if simulated)
-        if: ${{ !(fromJSON(vars.SIM_FAIL_DL || 'false') || (github.event_name == 'workflow_dispatch' && fromJSON(inputs.simulate_artifact_download_fail || 'false'))) }}
+        if: ${{ !(github.event_name == 'workflow_dispatch' && fromJSON(inputs.simulate_artifact_download_fail || 'false')) }}
         uses: actions/download-artifact@v4
         with:
           name: ${{ env.BUILD_ARTIFACT_NAME }}
           path: ./dist
 
       - name: Simulate artifact download failure
-        if: ${{ fromJSON(vars.SIM_FAIL_DL || 'false') || (github.event_name == 'workflow_dispatch' && fromJSON(inputs.simulate_artifact_download_fail || 'false')) }}
+        if: ${{ github.event_name == 'workflow_dispatch' && fromJSON(inputs.simulate_artifact_download_fail || 'false') }}
         run: |
           echo "::warning::Simulating ARTIFACT DOWNLOAD failure"
           exit 1
@@ -275,7 +275,7 @@ jobs:
           echo "TAG=$TAG" >> $GITHUB_OUTPUT
 
       - name: Simulate STAGING release failure
-        if: ${{ fromJSON(vars.SIM_FAIL_STAGING_RELEASE || 'false') || (github.event_name == 'workflow_dispatch' && fromJSON(inputs.simulate_staging_release_fail || 'false')) }}
+        if: ${{ github.event_name == 'workflow_dispatch' && fromJSON(inputs.simulate_staging_release_fail || 'false') }}
         run: |
           echo "::warning::Simulating STAGING RELEASE failure"
           exit 1
@@ -302,12 +302,12 @@ jobs:
           fi
 
       - name: Slack notify (fake)
-        if: ${{ !(fromJSON(vars.SIM_FAIL_SLACK || 'false') || (github.event_name == 'workflow_dispatch' && fromJSON(inputs.simulate_slack_fail || 'false'))) }}
+        if: ${{ !(github.event_name == 'workflow_dispatch' && fromJSON(inputs.simulate_slack_fail || 'false')) }}
         run: |
           echo "Pretend to send Slack notification…"
 
       - name: Simulate Slack notification failure (staging)
-        if: ${{ fromJSON(vars.SIM_FAIL_SLACK || 'false') || (github.event_name == 'workflow_dispatch' && fromJSON(inputs.simulate_slack_fail || 'false')) }}
+        if: ${{ github.event_name == 'workflow_dispatch' && fromJSON(inputs.simulate_slack_fail || 'false') }}
         run: |
           echo "::warning::Simulating SLACK failure"
           exit 1
@@ -324,14 +324,14 @@ jobs:
       TEST_ENV: prod
     steps:
       - name: Download artifact (or fail if simulated)
-        if: ${{ !(fromJSON(vars.SIM_FAIL_DL || 'false') || (github.event_name == 'workflow_dispatch' && fromJSON(inputs.simulate_artifact_download_fail || 'false'))) }}
+        if: ${{ !(github.event_name == 'workflow_dispatch' && fromJSON(inputs.simulate_artifact_download_fail || 'false')) }}
         uses: actions/download-artifact@v4
         with:
           name: ${{ env.BUILD_ARTIFACT_NAME }}
           path: ./dist
 
       - name: Simulate artifact download failure
-        if: ${{ fromJSON(vars.SIM_FAIL_DL || 'false') || (github.event_name == 'workflow_dispatch' && fromJSON(inputs.simulate_artifact_download_fail || 'false')) }}
+        if: ${{ github.event_name == 'workflow_dispatch' && fromJSON(inputs.simulate_artifact_download_fail || 'false') }}
         run: |
           echo "::warning::Simulating ARTIFACT DOWNLOAD failure"
           exit 1
@@ -374,7 +374,7 @@ jobs:
           echo "TAG=$TAG" >> $GITHUB_OUTPUT
 
       - name: Simulate PRODUCTION release failure
-        if: ${{ fromJSON(vars.SIM_FAIL_PROD_RELEASE || 'false') || (github.event_name == 'workflow_dispatch' && fromJSON(inputs.simulate_prod_release_fail || 'false')) }}
+        if: ${{ github.event_name == 'workflow_dispatch' && fromJSON(inputs.simulate_prod_release_fail || 'false') }}
         run: |
           echo "::warning::Simulating PRODUCTION RELEASE failure"
           exit 1
