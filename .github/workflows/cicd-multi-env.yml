@@ -24,6 +24,7 @@ concurrency:
 env:
   NODE_VERSION: "20"
   BUILD_ARTIFACT_NAME: "dist-artifact"
+  FALLBACK_ARTIFACT_NAME: "build-artifact"
 
 jobs:
   build:
@@ -143,22 +144,33 @@ jobs:
     env:
       TEST_ENV: "staging"
     steps:
-      - name: Check artifact exists (staging)
+      - name: Find artifact to download (staging)
+        id: find-artifact-staging
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ART_NAME: ${{ env.BUILD_ARTIFACT_NAME }}
+          ALT_NAME: ${{ env.FALLBACK_ARTIFACT_NAME }}
         run: |
-          echo "Checking artifact '$ART_NAME' for run $GITHUB_RUN_ID"
-          curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \
-            "https://api.github.com/repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts" \
-            | tee artifacts_run_list.json \
-            | grep -q "\"name\": \"$ART_NAME\"" || { echo "::error::Artifact '$ART_NAME' not found in this run"; echo "--- artifacts_run_list.json ---"; cat artifacts_run_list.json; exit 1; }
+          echo "Checking run $GITHUB_RUN_ID for artifacts: $ART_NAME or $ALT_NAME"
+          resp=$(curl -s -H "Authorization: Bearer $GITHUB_TOKEN" "https://api.github.com/repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts")
+          echo "$resp" > artifacts_run_list.json || true
+          if echo "$resp" | grep -q "\"name\": \"$ART_NAME\""; then
+            echo "SELECTED=$ART_NAME" >> $GITHUB_OUTPUT
+          elif echo "$resp" | grep -q "\"name\": \"$ALT_NAME\""; then
+            echo "SELECTED=$ALT_NAME" >> $GITHUB_OUTPUT
+          else
+            echo "::error::Neither artifact ($ART_NAME nor $ALT_NAME) found in run $GITHUB_RUN_ID"
+            echo "--- artifacts_run_list.json ---"
+            cat artifacts_run_list.json
+            exit 1
+          fi
         shell: bash
 
       - name: Download build artifact
+        if: ${{ steps.find-artifact-staging.outputs.SELECTED != '' }}
         uses: actions/download-artifact@v4
         with:
-          name: ${{ env.BUILD_ARTIFACT_NAME }}
+          name: ${{ steps.find-artifact-staging.outputs.SELECTED }}
           path: ./dist
 
       - name: Deploy to Staging (placeholder)
@@ -189,22 +201,33 @@ jobs:
     env:
       TEST_ENV: "prod"
     steps:
-      - name: Check artifact exists (production)
+      - name: Find artifact to download (production)
+        id: find-artifact-prod
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ART_NAME: ${{ env.BUILD_ARTIFACT_NAME }}
+          ALT_NAME: ${{ env.FALLBACK_ARTIFACT_NAME }}
         run: |
-          echo "Checking artifact '$ART_NAME' for run $GITHUB_RUN_ID"
-          curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \
-            "https://api.github.com/repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts" \
-            | tee artifacts_run_list.json \
-            | grep -q "\"name\": \"$ART_NAME\"" || { echo "::error::Artifact '$ART_NAME' not found in this run"; echo "--- artifacts_run_list.json ---"; cat artifacts_run_list.json; exit 1; }
+          echo "Checking run $GITHUB_RUN_ID for artifacts: $ART_NAME or $ALT_NAME"
+          resp=$(curl -s -H "Authorization: Bearer $GITHUB_TOKEN" "https://api.github.com/repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts")
+          echo "$resp" > artifacts_run_list.json || true
+          if echo "$resp" | grep -q "\"name\": \"$ART_NAME\""; then
+            echo "SELECTED=$ART_NAME" >> $GITHUB_OUTPUT
+          elif echo "$resp" | grep -q "\"name\": \"$ALT_NAME\""; then
+            echo "SELECTED=$ALT_NAME" >> $GITHUB_OUTPUT
+          else
+            echo "::error::Neither artifact ($ART_NAME nor $ALT_NAME) found in run $GITHUB_RUN_ID"
+            echo "--- artifacts_run_list.json ---"
+            cat artifacts_run_list.json
+            exit 1
+          fi
         shell: bash
 
       - name: Download build artifact
+        if: ${{ steps.find-artifact-prod.outputs.SELECTED != '' }}
         uses: actions/download-artifact@v4
         with:
-          name: ${{ env.BUILD_ARTIFACT_NAME }}
+          name: ${{ steps.find-artifact-prod.outputs.SELECTED }}
           path: ./dist
 
       - name: Deploy to Production (placeholder)
