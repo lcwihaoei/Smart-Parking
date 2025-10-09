@@ -55,6 +55,13 @@ jobs:
             echo "dist exists"
           fi
 
+      - name: Show dist contents (debug)
+        run: |
+          echo "PWD=$(pwd)"
+          echo "Listing dist"
+          ls -la dist || true
+          find dist -type f -maxdepth 5 -print || true
+
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
@@ -62,6 +69,15 @@ jobs:
           path: |
             dist/**
             !**/*.map
+
+      - name: List artifacts for this run (debug)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Listing artifacts for run $GITHUB_RUN_ID"
+          curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts" > artifacts.json || true
+          echo "Artifacts JSON:" && cat artifacts.json || true
 
   unit_tests:
     name: Unit Tests
